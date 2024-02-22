@@ -1,10 +1,8 @@
 # SimpleExtractor
 
-SimpleExtractor is an extractor for .spmod mod files, used in Simple Planes, written in Python.
+SimpleExtractor is an extractor for .spmod (Simple Planes) and .sr-mod (Simple Rockets 2/Juno: New Origins) mod files, written in Python.
 
-> SimpleRockets2 (aka Juno: New Origins) support is also planned
-
-The code is based on reverse-engineered game .dll's from Simple Planes
+The code is based on reverse-engineered game/modtools .dlls' from Simple Planes and Simple Rockets 2 / Juno: New Origins
 
 **Disclaimer: For Research Purposes Only**
 
@@ -30,6 +28,8 @@ In case of getting an error, reach us out in issues, including mod you were tryi
 ### Note on reverse-engineering assemblies from mods
 
 After extracting any .dll files with any desired extractor of assetBundles (for example UABE), you may sometimes notice that you can't open those via any C# disassembler. You may already have noticed, that those are as TextAssets
+
+> For Juno: New Origins (SimpleRockets2) consider using pre-1.0 version (for example, 0.3.4.0) of AssetRipper, since its based on Unity 2022, as newer ones break assemblies.
 
 - To properly import library, use any possible HEX editor and remove first 132 bytes (0-83 blocks, length 84, if you are using HxD) of .txt file, and save it as dll
 - - Those 132 bytes, are "header" which mark files as "assembly" for the game. You can find exact header numbers in main.py.
@@ -61,3 +61,25 @@ After unpack, we get file consisting of:
 Notice, that Android is no longer supported as a platform, yet its saved in the format. [This is due to drop of 32-bit support.](https://www.simpleplanes.com/Blog/View/1056875/Update-1-9-High-Caliber)
 
 iOS should've also had support of mods, and has a lot of mentions in ModTools dll's. However, the support is not avaliable.
+
+## `sr-mod` files format
+
+> Almost same as `spmod`
+
+Initially, when downloaded, the mod is in compressed state.
+
+In such case, file consists of:
+
+1. Header (`SimpleRockets2CompressedModFileV001`)
+2. Gzip data
+
+When you import it into the game, game copies into the dir, runs unpacking function on dir, and scans all mods
+
+After unpack, we get file consisting of:
+
+1. Header (`SimpleRockets2ModHeaderV001`)
+2. 8 bits of 64-bit signed integer, representing Windows assetBundle offset, for loading with `AssetBundle.LoadFromFile` function later. If the bundle isn't here, the number will be lower than or equal to 0.
+3. Same 8 bits, but for MacOS assetBundle offset
+4. 8 bits for Linux assetBundle offset
+5. 8 bits for Android assetBundle offset
+6. Bundles itself, defined by offsets

@@ -1,6 +1,7 @@
 import sys, os, gzip
 
-CompressedModByteHeader = ("SimplePlanes".replace(" ", "") + "CompressedModFileV001").encode()
+SP_CompressedModByteHeader = ("SimplePlanes".replace(" ", "") + "CompressedModFileV001").encode()
+SR_CompressedModByteHeader = ("SimpleRockets 2".replace(" ", "") + "CompressedModFileV001").encode()
 
 AssemblyHeader = [72, 50, 210, 183, 136, 156, 218, 76, 148, 225,
         133, 206, 41, 37, 231, 56, 85, 34, 189, 42,
@@ -18,8 +19,10 @@ AssemblyHeader = [72, 50, 210, 183, 136, 156, 218, 76, 148, 225,
 
 class ModHeader:
     def __init__(self, windowsOffset=0, macOSOffset=0, linuxOffset=0, androidOffset=0, iOSOffset=0):
-        self._HeaderTagV1 = "SimplePlanes".replace(" ", "") + "ModHeaderV001"
-        self._HeaderTagV1Bytes = self._HeaderTagV1.encode()
+        self._SP_HeaderTagV1 = "SimplePlanes".replace(" ", "") + "ModHeaderV001"
+        self._SR_HeaderTagV1 = "SimpleRockets 2".replace(" ", "") + "ModHeaderV001"
+        self._SP_HeaderTagV1Bytes = self._SP_HeaderTagV1.encode()
+        self._SR_HeaderTagV1Bytes = self._SR_HeaderTagV1.encode()
 
         self.AssetBundleOffsetWindows = windowsOffset
         self.AssetBundleOffsetMacOS = macOSOffset
@@ -27,15 +30,33 @@ class ModHeader:
         self.AssetBundleOffsetAndroid = androidOffset
         self.AssetBundleOffsetIOS = None # There's no iOS support.
 
-    def Read(self, filePath):
+    def DetectModHeader(self, filePath):
         if os.path.exists(filePath):
-            if os.path.getsize(filePath) <= len(self._HeaderTagV1Bytes):
+            if os.path.getsize(filePath) <= len(self._SR_HeaderTagV1Bytes):
                 return None
+        
+        with open(filePath, "br") as file:
+            buffer = file.read(len(self._SP_HeaderTagV1Bytes))
+        
+        if buffer == self._SP_HeaderTagV1Bytes:
+            return self._SP_HeaderTagV1Bytes
+        
+        with open(filePath, "br") as file:
+            buffer = file.read(len(self._SR_HeaderTagV1Bytes))
+        
+        if buffer == self._SR_HeaderTagV1Bytes:
+            return self._SR_HeaderTagV1Bytes
+        
+        return None
+
+    def Read(self, filePath):
+        HeaderTagBytes = self.DetectModHeader(filePath)
+        if not HeaderTagBytes: return None
         
         fileStream = open(filePath, "br")
         
-        buffer = fileStream.read(len(self._HeaderTagV1Bytes))
-        if buffer != self._HeaderTagV1Bytes:
+        buffer = fileStream.read(len(HeaderTagBytes))
+        if buffer != HeaderTagBytes:
             return None
         
         self.AssetBundleOffsetWindows = self.ReadOffset(fileStream)
@@ -52,23 +73,27 @@ class ModHeader:
         return num2 if (num2 > 0) else -1 # Non-existent
 
 class ModManager:
-    def IsCompressed(modPath):
+    def detectCompressedHeader(modPath):
         if os.path.exists(modPath):
-            if os.path.getsize(modPath) <= len(CompressedModByteHeader):
-                return False
+            if os.path.getsize(modPath) <= len(SR_CompressedModByteHeader):
+                return (False, None)
         
         with open(modPath, "br") as file:
-            buffer = file.read(len(CompressedModByteHeader))
+            buffer = file.read(len(SP_CompressedModByteHeader))
         
-        if buffer != CompressedModByteHeader:
-            return False
+        if buffer == SP_CompressedModByteHeader:
+            return (True, SP_CompressedModByteHeader)
         
-        return True
+        with open(modPath, "br") as file:
+            buffer = file.read(len(SR_CompressedModByteHeader))
+        
+        if buffer == SR_CompressedModByteHeader:
+            return (True, SR_CompressedModByteHeader)
+        
+        return (False, None)
 
     def DecompressMod(modPath):
-        if os.path.exists(modPath):
-            if os.path.getsize(modPath) <= len(CompressedModByteHeader):
-                return
+        CompressedModByteHeader = ModManager.detectCompressedHeader(modPath)[1]
         
         with open(modPath, "br") as file:
             buffer = file.read(len(CompressedModByteHeader))
@@ -108,7 +133,7 @@ class ModManager:
         # TODO: Implement BundledMods?
 
         # TODO: Also Implement support of old mods (those having no proper header, supposedly)
-        header.Read(modFilePath)
+        if not header.Read(modFilePath): return None
 
         offsets = sorted({"android": header.AssetBundleOffsetAndroid, 
                    "windows": header.AssetBundleOffsetWindows, 
@@ -148,17 +173,18 @@ def main():
 
         out = ".".join(os.path.basename(file).split(".")[:-1]) + ".extracted" # Output dir
 
-        if ModManager.IsCompressed(file):
+        if ModManager.detectCompressedHeader(file)[0]:
             if not ModManager.DecompressMod(file):
                 print(f"[ERROR] File {file} is corrupted/not a mod file.")
                 return
             # Process decompressed one instead
             file += ".decompressed"
 
-        ModManager.LoadAssetBundleFromMod(file, out)
+        if not ModManager.LoadAssetBundleFromMod(file, out):
+            print(f"[ERROR] Something went wrong while extracting file {file}. Is this really a mod file?")
+            return
 
         if file.endswith(".decompressed"): os.remove(file) # Remove decompressed temp file
-            
 
 
 if __name__ == "__main__": main()
